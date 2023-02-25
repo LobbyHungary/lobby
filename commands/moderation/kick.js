@@ -1,130 +1,119 @@
-const { SlashCommandBuilder } = require('@discordjs/builders')
-const { PermissionFlagsBits } = require('discord-api-types/v10')
-const { MessageEmbed, MessageButton, MessageActionRow } = require('discord.js')
+const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonStyle, ButtonBuilder, EmbedBuilder } = require('discord.js')
 
 module.exports = {
-    data: new SlashCommandBuilder()
-        .setName('kick')
-        .setDescription('Kidob embereket a szerverről')
-        .addUserOption((option) => option.setName('target').setDescription('A felhasználó akit ki szeretnél dobni').setRequired(true))
-        .addStringOption((option) => option.setName('reason').setDescription('Az ok amiért ki akarsz dobni valakit!').setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
-    async execute(interaction, client) {
-        const target = interaction.options.getUser('target')
-        const reason = interaction.options.getString('reason')
-        const user = interaction.user
-        const modChannel = interaction.guild.channels.cache.get('1036714511127814164')
+        data: new SlashCommandBuilder()
+                .setName('kick')
+                .setDescription('Kidob egy felhasználót a szerverről')
+                .addUserOption((option) => option.setName('felhasználó').setDescription('A felhasználó akit ki szeretnél dobni a szerverről').setRequired(true))
+                .addStringOption((option) => option.setName('indok').setDescription('A kidobás oka').setRequired(true))
+                .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers),
+        async execute(interaction) {
+                const target = interaction.options.getUser('felhasználó')
+                const reason = interaction.options.getString('indok')
+                const author = interaction.user
+                const modlog = interaction.guild.channels.cache.get('1077271497921544364')
 
-        const targetMember = interaction.guild.members.cache.get(target.id)
-        const userMember = interaction.guild.members.cache.get(user.id)
+                const targetMember = interaction.guild.members.cache.get(target.id)
+                const authorMember = interaction.guild.members.cache.get(author.id)
 
-        if(target.id === interaction.guild.ownerId) return interaction.reply({ content: 'Majd holnap!', ephemeral: true})
-        if(target.id === user.id) return interaction.reply({ content: 'Nem tudod magadat dobni!', ephemeral: true})
-        if(targetMember.roles.highest.position >= userMember.roles.highest.position) return interaction.reply({ content: 'A felhasználónak magasabb vagy veled egyenlő rangja van!', ephemeral: true})
+                if (target.id === interaction.guild.ownerId) return interaction.reply({ content: `Nem lehet kidobni ${target}-t, mert ő a szerver tulajdonosa`, ephemeral: true })
+                if (target.id === author.id) return interaction.reply({ content: 'Nem tudod magadat kidobni ', ephemeral: true })
+                if (targetMember.roles.highest.position >= authorMember.roles.highest.position) return interaction.reply({ content: `${target} felhasználónak magasabb vagy veled egyenlő szintű ranja van`, ephemeral: true })
 
-        const confirmationRow = new MessageActionRow()
-            .addComponents(
-                new MessageButton()
-                    .setCustomId('accept')
-                    .setLabel('Igen')
-                    .setStyle('SUCCESS'),
+                const confirmationRow = new ActionRowBuilder()
+                        .addComponents(
+                                new ButtonBuilder()
+                                        .setCustomId('accept')
+                                        .setLabel('Igen')
+                                        .setStyle(ButtonStyle.Success),
 
-                new MessageButton()
-                    .setCustomId('deny')
-                    .setLabel('Nem')
-                    .setStyle('DANGER')
-            )
+                                new ButtonBuilder()
+                                        .setCustomId('deny')
+                                        .setLabel('Nem')
+                                        .setStyle(ButtonStyle.Danger)
+                        )
 
-        const embed = new MessageEmbed()
-            .setTitle('Megerősítés')
-            .setDescription(`${user}! Biztos vagy benne, hogy kidobot ${target} felhasználót?`)
-            .setThumbnail(user.avatarURL())
-            .setFooter({ text: 'Lobby Hungary | Büntetésvégrehajtás', iconURL: interaction.guild.iconURL() })
-            .setColor('BLURPLE')
+                const embed = new EmbedBuilder()
+                        .setTitle('Megerősítés')
+                        .setDescription(`${author}! Biztos vagy benne, hogy kidobod ${target} felhasználót?`)
+                        .setFooter({ text: 'Lobby Hungary | Büntetésvégrehajtás', iconURL: interaction.guild.iconURL() })
+                        .setThumbnail(target.avatarURL())
+                        .setColor('Blurple')
 
-        await interaction.reply({
-            embeds: [embed],
-            components: [confirmationRow],
-            fetchReply: true,
-            ephemeral: true
-        })
+                await interaction.reply({
+                        embeds: [embed],
+                        components: [confirmationRow],
+                        fetchReply: true,
+                        ephemeral: true
+                })
 
-        // Confirmation
+                const filter = i => i.customId === 'accept' || 'deny' && i.user.id === `${author.id}`;
+                const collector = interaction.channel.createMessageComponentCollector({ filter, time: 10000 });
+                collector.on('collect', async i => {
+                        if (i.customId === 'accept') return confirm()
+                        if (i.customId === 'deny') return cancel()
+                });
 
-        const filter = i => i.customId === 'accept' || 'deny' && i.user.id === `${user.id}`;
-        const collector = interaction.channel.createMessageComponentCollector({ filter, time: 10000 });
-        collector.on('collect', async i => {
-            if (i.customId === 'accept') return confirm()
-            if (i.customId === 'deny') return cancel()
-        });
+                async function confirm() {
 
-        async function confirm () {
+                        const modlogEmbed = new EmbedBuilder()
+                                .setColor('Blurple')
+                                .setTitle(`${target.tag} ki lett dobva !`)
+                                .addFields([
+                                        { name: 'Felhasználó:', value: `${target}` },
+                                        { name: 'Moderátor:', value: `${author}` },
+                                        { name: 'Kidobás Oka:', value: `${reason}` },
+                                ])
+                                .setFooter({ text: 'Lobby Hungary | Büntetésvégrehajtás', iconURL: interaction.guild.iconURL() })
 
-            // Server Log
+                        await modlog.send({ embeds: [modlogEmbed], components: [], fetchReply: true });
+                        interaction.editReply({ content: `${target} sikeresen ki lett dobva!`, embeds: [], components: [], ephemeral: true })
 
-            const modlogEmbed = new MessageEmbed()
-            .setColor('BLURPLE')
-            .setTitle(`${target.tag} ki lett dobva!`)
-            .addFields(
-                { name: 'Felhasználó:', value: `${target}` },
-                { name: 'Moderátor:', value: `${user}` },
-                { name: 'Kidobás Oka:', value: `${reason}` }
-            )
-            .setFooter({ text: 'Lobby Hungary | Büntetésvégrehajtás', iconURL: interaction.guild.iconURL() })
+                        // User Log
 
-            await modChannel.send({ embeds: [modlogEmbed], components: [], fetchReply: true });
-            interaction.editReply({ content: `${target} sikeresen kidobva!`, embeds: [] , components: [], ephemeral: true })
+                        const linkRow = new ActionRowBuilder()
+                                .addComponents(
+                                        new ButtonBuilder()
+                                                .setLabel('Lobby Hungary Support')
+                                                .setURL('https://discord.com/users/947851581481680918')
+                                                .setStyle(ButtonStyle.Link)
+                                )
 
-            // User Log
+                        const targetEmbed = new EmbedBuilder()
+                                .setColor('Blurple')
+                                .setTitle(`Kidobás!`)
+                                .setDescription(`Kedves ${target}!\n`
+                                        + `Sajnálattal értesítünk, hogy ki lettél dobva a ${interaction.guild.name} szerveren! Kérlek legközelebb fektess több figyelmet a szabályzat betartására!`
+                                )
+                                .addFields([
+                                        { name: 'Moderátor:', value: `${author}` },
+                                        { name: 'kidobás Oka:', value: `${reason}` },
+                                ])
+                                .setFooter({ text: 'Lobby Hungary | Büntetésvégrehajtás', iconURL: interaction.guild.iconURL() })
 
-            const linkRow = new MessageActionRow()
-            .addComponents(
-                new MessageButton()
-                    .setLabel('Visszacsatlakozás a szerverhez!')
-                    .setURL('https://discord.gg/SpHCA522BD')
-                    .setStyle('LINK'),
 
-                    new MessageButton()
-                    .setLabel('Lobby Hungary Support')
-                    .setURL('https://discord.com/users/947851581481680918')
-                    .setStyle('LINK')
-            )
+                        await target.send({ embeds: [targetEmbed], components: [linkRow] }).catch(async error => {
+                                const errorEmbed = new EmbedBuilder()
+                                        .setDescription(`Nem sikerült üzenetet küldeni ${target} felhasználónak!`)
+                                        .setColor('Red')
 
-            const targetEmbed = new MessageEmbed()
-            .setColor('BLURPLE')
-            .setTitle(`Ki lettél dobva!`)
-            .setDescription(`Kedves ${target.username}!\n`
-            +`Sajnálattal értesítünk, hogy ki lettél dobva a ${interaction.guild.name} szerverről! További szabályszegések komolyabb büntetéseket is vanhatnak maguk után!`
-            )
-            .addFields(
-                { name: 'Moderátor:', value: `${user}` },
-                { name: 'Kidobás Oka:', value: `${reason}` }
-            )
-            .setFooter({ text: 'Lobby Hungary | Büntetésvégrehajtás', iconURL: interaction.guild.iconURL() })
+                                const errorMessage = await interaction.channel.send({ embeds: [errorEmbed] })
+                                setTimeout(() => {
+                                        errorMessage.delete()
+                                }, 10000);
+                        })
 
-            await target.send({ embeds: [targetEmbed], components: [linkRow] }).catch(async error => { 
-                const errorEmbed = new MessageEmbed()
-                .setDescription(`Nem sikerült üzenetet küldeni ${target} felhasználónak!`)
-                .setColor('RED')
-
-                const errorMessage = await interaction.channel.send({ embeds: [errorEmbed] })
-                setTimeout(() => {
-                    errorMessage.delete()
-                }, 10000);
-             })
-
-            setTimeout(() => {
-                try {
-                    targetMember.kick(`${reason}`) 
-                } catch (error) {
-                    throw error;
+                        setTimeout(() => {
+                                try {
+                                        targetMember.kick(reason)
+                                } catch (error) {
+                                        throw error;
+                                }
+                        }, 1000);
                 }
-            }, 1000);
 
-        }
-
-        function cancel () {
-            interaction.editReply({ content: 'A kidobás elengedve!', components: [], embeds: [], ephemeral: true });
-        }
-    }
-}
+                async function cancel() {
+                        interaction.editReply({ content: 'A Kidobás el lett engedve', components: [], embeds: [], ephemeral: true });
+                }
+        },
+};

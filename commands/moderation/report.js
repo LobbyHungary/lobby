@@ -1,42 +1,44 @@
-const { SlashCommandBuilder } = require('@discordjs/builders')
-const { PermissionFlagsBits } = require('discord-api-types/v10')
-const { MessageEmbed, MessageButton, MessageActionRow } = require('discord.js')
+const { SlashCommandBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonStyle, ButtonBuilder, EmbedBuilder } = require('discord.js')
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('report')
-        .setDescription('Jelentsd be a szabályszegőket')
-        .addUserOption((option) => option.setName('target').setDescription('A felhasználó akit fel akarsz jelenteni').setRequired(true))
-        .addStringOption((option) => option.setName('reason').setDescription('Az ok amiért fel akarsz jelenteni valakit').setRequired(true))
-        .setDefaultMemberPermissions(PermissionFlagsBits.UseApplicationCommands),
-    async execute(interaction, client) {
-        const target = interaction.options.getUser('target')
-        const reason = interaction.options.getString('reason')
-        const user = interaction.user
-        const modChannel = interaction.guild.channels.cache.get('1036714511127814164')
+        .setDescription('Bejlent egy felhasználót az moderátoroknak')
+        .addUserOption((option) => option.setName('felhasználó').setDescription('A felhasználó akit be szeretnél jelenteni').setRequired(true))
+        .addStringOption((option) => option.setName('indok').setDescription('A bejelentés oka').setRequired(true).setMinLength(25).setMaxLength(200))
+        .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+    async execute(interaction) {
+        const target = interaction.options.getUser('felhasználó')
+        const reason = interaction.options.getString('indok')
+        const author = interaction.user
+        const modlog = interaction.guild.channels.cache.get('1077271535401844887')
 
-        if(target.id === interaction.guild.ownerId) return interaction.reply({ content: 'Majd holnap!', ephemeral: true})
-        if(target.id === user.id) return interaction.reply({ content: 'Nem tudod magadat feljelenteni!', ephemeral: true})
+        const targetMember = interaction.guild.members.cache.get(target.id)
+        const authorMember = interaction.guild.members.cache.get(author.id)
 
-        const confirmationRow = new MessageActionRow()
+        if (target.id === interaction.guild.ownerId) return interaction.reply({ content: `Nem lehet bejelenteni ${target}-t, mert ő a szerver tulajdonosa`, ephemeral: true })
+        if (target.id === author.id) return interaction.reply({ content: 'Nem tudod magadat bejelenteni ', ephemeral: true })
+        if (targetMember.roles.highest.position >= authorMember.roles.highest.position) return interaction.reply({ content: `${target} felhasználónak magasabb vagy veled egyenlő szintű ranja van`, ephemeral: true })
+
+        const confirmationRow = new ActionRowBuilder()
             .addComponents(
-                new MessageButton()
+                new ButtonBuilder()
                     .setCustomId('accept')
                     .setLabel('Igen')
-                    .setStyle('SUCCESS'),
+                    .setStyle(ButtonStyle.Success),
 
-                new MessageButton()
+                new ButtonBuilder()
                     .setCustomId('deny')
                     .setLabel('Nem')
-                    .setStyle('DANGER')
+                    .setStyle(ButtonStyle.Danger)
             )
 
-        const embed = new MessageEmbed()
+        const embed = new EmbedBuilder()
             .setTitle('Megerősítés')
-            .setDescription(`${user}! Biztos vagy benne, hogy feljelented ${target} felhasználót?`)
-            .setThumbnail(user.avatarURL())
+            .setDescription(`${author}! Biztos vagy benne, hogy bejelented ${target} felhasználót?`)
             .setFooter({ text: 'Lobby Hungary | Büntetésvégrehajtás', iconURL: interaction.guild.iconURL() })
-            .setColor('BLURPLE')
+            .setThumbnail(target.avatarURL())
+            .setColor('Blurple')
 
         await interaction.reply({
             embeds: [embed],
@@ -45,35 +47,31 @@ module.exports = {
             ephemeral: true
         })
 
-        // Confirmation
-
-        const filter = i => i.customId === 'accept' || 'deny' && i.user.id === `${user.id}`;
+        const filter = i => i.customId === 'accept' || 'deny' && i.user.id === `${author.id}`;
         const collector = interaction.channel.createMessageComponentCollector({ filter, time: 10000 });
         collector.on('collect', async i => {
             if (i.customId === 'accept') return confirm()
             if (i.customId === 'deny') return cancel()
         });
 
-        async function confirm () {
+        async function confirm() {
 
-            // Server Log
+            const modlogEmbed = new EmbedBuilder()
+                .setColor('Blurple')
+                .setTitle(`Új bejelentés`)
+                .addFields([
+                    { name: 'Felhasználó:', value: `${target}` },
+                    { name: 'Bejelentő:', value: `${author}` },
+                    { name: 'Bejelnetés Oka:', value: `${reason}` },
+                ])
+                .setFooter({ text: 'Lobby Hungary | Büntetésvégrehajtás', iconURL: interaction.guild.iconURL() })
 
-            const modlogEmbed = new MessageEmbed()
-            .setColor('BLURPLE')
-            .setTitle(`${target.tag} ki lett tiltva!`)
-            .addFields(
-                { name: 'Felhasználó:', value: `${target}` },
-                { name: 'Feljelentő:', value: `${user}` },
-                { name: 'Jelentés Oka:', value: `${reason}` }
-            )
-            .setFooter({ text: 'Lobby Hungary | Büntetésvégrehajtás', iconURL: interaction.guild.iconURL() })
-
-            await modChannel.send({ embeds: [modlogEmbed], components: [], fetchReply: true });
-            interaction.editReply({ content: `${target} sikeresen bejelentve!`, embeds: [] , components: [], ephemeral: true })
+            await modlog.send({ embeds: [modlogEmbed], components: [], fetchReply: true });
+            interaction.editReply({ content: `${target} sikeresen be lett jelentve!`, embeds: [], components: [], ephemeral: true })
         }
 
-        function cancel () {
-            interaction.editReply({ content: 'A feljelentés elengedve!', components: [], embeds: [], ephemeral: true });
+        async function cancel() {
+            interaction.editReply({ content: 'A bejelentés el lett engedve', components: [], embeds: [], ephemeral: true });
         }
-    }
-}
+    },
+};
